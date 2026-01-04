@@ -1,298 +1,322 @@
 <!DOCTYPE html>
-<html>
-<head>  
+<html lang="en">
+<head>
     <meta charset="UTF-8">
-    <title>OnlineGDB Pinball - Fixed</title>
+    <title>NEON OVERDRIVE: ARCADE EDITION</title>
     <style>
-        body {
-            margin: 0;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            color: #0ff;
-            font-family: monospace;
-            overflow: hidden;
-        }
-        #canvas-container {
-            position: relative;
-            border: 2px solid #333;
-        }
-        #ui {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            pointer-events: none;
-            z-index: 10;
-        }
-        .stat { font-size: 20px; text-shadow: 0 0 5px #0ff; }
-        #controls {
-            position: absolute;
-            right: 10px;
-            top: 10px;
-            width: 300px;
-            background: rgba(0,0,0,0.7);
-            border: 1px solid #222;
-            padding: 8px;
-            pointer-events: auto;
-            z-index: 20;
-            color: #0ff;
-            font-size: 13px;
-        }
-        #controls h3 { margin: 6px 0; font-size: 14px; border-bottom: 1px solid #333; }
-        .control-row { display:flex; justify-content:space-between; align-items:center; margin:6px 0; }
-        #modal { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #021218; color: #0ff; padding: 12px; border: 1px solid #123; display:none; z-index:100; }
-        #modal textarea { width: 480px; height: 260px; background: #000; color: #0ff; }
+        body { margin: 0; background: #020205; overflow: hidden; display: flex; justify-content: space-around; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
+        #game-wrap { position: relative; border: 4px solid #1a1a1a; box-shadow: 0 0 80px rgba(0, 255, 255, 0.15); }
+        canvas { display: block; background: radial-gradient(circle at top, #0d0d1f 0%, #050508 100%); }
+        .ui { position: absolute; width: 100%; top: 20px; pointer-events: none; display: flex; justify-content: space-around; }
+        .stat { color: #0ff; font-size: 22px; font-weight: bold; text-shadow: 0 0 8px #0ff; letter-spacing: 2px; }
+        #overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; color: #f0f; text-align: center; z-index: 10; }
+        button { background: none; border: 2px solid #f0f; color: #f0f; padding: 12px 35px; font-family: inherit; font-size: 18px; cursor: pointer; margin-top: 20px; transition: 0.3s; }
+        button:hover { background: #f0f; color: #000; box-shadow: 0 0 20px #f0f; }
+        #sidebar { margin-left: 20px; width: 250px; color: #0ff; font-size: 14px; line-height: 1.5; text-shadow: 0 0 5px #0ff; }
+        #sidebar h3 { margin-top: 0; color: #f0f; }
+        #sidebar ul { padding-left: 20px; }
     </style>
 </head>
 <body>
 
-    <div id="ui">
-        <div class="stat" id="s">SCORE: 0000</div>
-        <div class="stat" id="l">BALLS: 3</div>
-        <div style="color: #666; font-size: 12px;">Controls in the side panel</div>
+<div style="display: flex; align-items: flex-start;">
+    <div id="game-wrap">
+        <div class="ui">
+            <div class="stat">SCORE: <span id="score">0</span></div>
+            <div class="stat">BALLS: <span id="balls">3</span></div>
+        </div>
+        <canvas id="pinball"></canvas>
+        <div id="overlay">
+            <h1 style="font-size: 3.5rem; margin-bottom: 0;">GAME OVER</h1>
+            <p id="finalScore" style="font-size: 1.4rem; color: #0ff;"></p>
+            <button onclick="resetGame()">INITIALIZE SYSTEM [R]</button>
+        </div>
     </div>
 
-    <div id="controls">
+    <div id="sidebar">
         <h3>Controls</h3>
-        <div id="remap">
-            <div class="control-row"><div>Left Flipper</div><div><span id="bind-left">ArrowLeft</span><button id="rebind-left">Rebind</button></div></div>
-            <div class="control-row"><div>Right Flipper</div><div><span id="bind-right">ArrowRight</span><button id="rebind-right">Rebind</button></div></div>
-            <div class="control-row"><div>Plunge</div><div><span id="bind-plunge">Space</span><button id="rebind-plunge">Rebind</button></div></div>
-        </div>
+        <ul>
+            <li><strong>Left Flipper:</strong> ← Arrow Key</li>
+            <li><strong>Right Flipper:</strong> → Arrow Key</li>
+            <li><strong>Plunger:</strong> Hold Space (in lane)</li>
+            <li><strong>Restart:</strong> R (on game over)</li>
+        </ul>
 
-        <h3>Camera</h3>
-        <div class="control-row"><div>Zoom</div><div><input id="zoom-range" type="range" min="0.5" max="2" step="0.05" value="1"></div></div>
+        <h3>Rules & Dynamics</h3>
+        <ul>
+            <li>Launch the ball with the plunger.</li>
+            <li>Use flippers to keep the ball in play.</li>
+            <li>Hit bumpers for points (250 each).</li>
+            <li>Score extra on slingshots (50 each).</li>
+            <li>Avoid draining the ball.</li>
+            <li>Game ends when all balls are lost.</li>
+        </ul>
 
-        <h3>Tools</h3>
-        <div class="control-row"><div>Rewind (5s)</div><div><button id="rewind">Rewind</button></div></div>
-        <div class="control-row"><div>Table Editor</div><div><button id="open-editor">Open</button></div></div>
+        <h3>Dynamic Info</h3>
+        <p id="dynamic-info">Ball in plunger lane. Hold Space to launch!</p>
 
-        <div id="hud" style="margin-top:10px; font-size:11px; color:#555;">
-            Matter.js Physics Active
-        </div>
+        <h3>Zoom</h3>
+        <input type="range" id="zoom" min="0.5" max="2" step="0.1" value="1" style="width: 100%;">
     </div>
+</div>
 
-    <div id="modal"><div id="modal-content"></div></div>
-    <div id="canvas-container"></div>
+<script>
+const canvas = document.getElementById('pinball');
+const ctx = canvas.getContext('2d');
+canvas.width = 500;
+canvas.height = 800;
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+// Config & Physics
+const GRAVITY = 0.2;
+const BALL_RAD = 10;
+const FRICTION = 0.995;
+const COLORS = { neon: '#0ff', primary: '#f0f', rail: '#333344', ball: '#fff' };
 
-    <script>
-        const { Engine, Render, Runner, Bodies, Composite, Body, Constraint, Events } = Matter;
+let score = 0;
+let balls = 3;
+let gameState = 'playing';
+const keys = {};
 
-        const engine = Engine.create();
-        const world = engine.world;
-        const width = 400;
-        const height = 600;
+class Ball {
+    constructor() { this.reset(); }
+    reset() {
+        this.x = 475; this.y = 750;
+        this.vx = 0; this.vy = 0;
+        this.inLane = true;
+        this.trail = [];
+    }
+    update() {
+        if (this.inLane) {
+            this.x = 475; // Locked in plunger lane
+            if (keys['Space']) this.vy -= 0.5; // Continuous launch
+            if (this.y < 150) this.inLane = false;
+        }
 
-        // Increase physics accuracy to prevent ball tunneling
-        engine.positionIterations = 10;
-        engine.velocityIterations = 10;
+        this.vy += GRAVITY;
+        this.vx *= FRICTION;
+        this.vy *= FRICTION;
+        this.x += this.vx;
+        this.y += this.vy;
 
-        const render = Render.create({
-            element: document.getElementById('canvas-container'),
-            engine: engine,
-            options: {
-                width: width,
-                height: height,
-                wireframes: false,
-                background: '#050505'
+        // Trail for visual speed
+        this.trail.push({x: this.x, y: this.y});
+        if (this.trail.length > 10) this.trail.shift();
+
+        this.checkWallCollisions();
+    }
+    checkWallCollisions() {
+        // Outer box
+        if (this.x < BALL_RAD) { this.x = BALL_RAD; this.vx *= -0.4; }
+        if (this.x > canvas.width - BALL_RAD) { this.x = canvas.width - BALL_RAD; this.vx *= -0.4; }
+        if (this.y < BALL_RAD) { this.y = BALL_RAD; this.vy *= -0.4; }
+
+        // Top Curved Passage Logic (The "Drop")
+        // Left curve: (250, 0) to (150, 150)
+        // Right curve: (250, 0) to (350, 150)
+        if (this.y < 180) {
+            let dxLeft = this.x - 150;
+            let dxRight = this.x - 350;
+            if (this.x < 240 && this.x > 140 && this.y < 100) { // Entry funnel
+                this.vx += 0.1; // Pull toward center
             }
+        }
+
+        // Plunger lane wall
+        if (this.x > 450 - BALL_RAD && this.y > 150 && !this.inLane) {
+            this.x = 450 - BALL_RAD;
+            this.vx *= -0.5;
+        }
+
+        // Slingshots
+        if (this.x < 100 && this.y > 550 && this.y < 650) {
+            this.vx = Math.abs(this.vx) * 0.8 + 2; // Bounce right with extra
+            this.vy *= 0.8;
+            score += 50;
+        }
+        if (this.x > 400 && this.y > 550 && this.y < 650) {
+            this.vx = -Math.abs(this.vx) * 0.8 - 2; // Bounce left with extra
+            this.vy *= 0.8;
+            score += 50;
+        }
+
+        // Outlanes / Drain
+        if (this.y > canvas.height + 50) nextBall();
+    }
+    draw() {
+        this.trail.forEach((p, i) => {
+            ctx.globalAlpha = i / 15;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, BALL_RAD * (i/10), 0, Math.PI*2);
+            ctx.fillStyle = COLORS.neon;
+            ctx.fill();
         });
+        ctx.globalAlpha = 1;
+        ctx.save();
+        ctx.shadowBlur = 12; ctx.shadowColor = COLORS.neon;
+        ctx.beginPath(); ctx.arc(this.x, this.y, BALL_RAD, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS.ball; ctx.fill();
+        ctx.restore();
+    }
+}
 
-        Render.run(render);
-        Runner.run(Runner.create(), engine);
+class Flipper {
+    constructor(x, y, isRight) {
+        this.x = x; this.y = y; this.isRight = isRight;
+        this.angle = isRight ? -0.3 : 0.3;
+        this.baseAngle = this.angle;
+        this.length = 100;
+        this.width = 15;
+    }
+    update() {
+        const active = this.isRight ? keys['ArrowRight'] : keys['ArrowLeft'];
+        const target = active ? (this.isRight ? 0.7 : -0.7) : this.baseAngle;
+        this.angle += (target - this.angle) * 0.4;
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.shadowBlur = 15; ctx.shadowColor = COLORS.primary;
+        ctx.fillStyle = COLORS.primary;
+        ctx.beginPath();
+        ctx.roundRect(0, -this.width/2, this.isRight ? -this.length : this.length, this.width, 10);
+        ctx.fill();
+        ctx.restore();
+    }
+}
 
-        // --- Game State ---
-        let score = 0;
-        let lives = 3;
-        let ball = null;
-        const keys = {};
-        const defaultBindings = { left: 'ArrowLeft', right: 'ArrowRight', plunge: 'Space' };
-        let bindings = Object.assign({}, defaultBindings);
-        
-        // Load saved bindings
-        try { 
-            const saved = localStorage.getItem('pinball_bindings'); 
-            if (saved) Object.assign(bindings, JSON.parse(saved)); 
-        } catch(e){}
-
-        // --- Table Creation ---
-        const wallStyle = { fillStyle: '#222' };
-        
-        Composite.add(world, [
-            Bodies.rectangle(200, 0, 400, 20, { isStatic: true, render: wallStyle }), // Top
-            Bodies.rectangle(0, 300, 20, 600, { isStatic: true, render: wallStyle }),   // Left
-            Bodies.rectangle(400, 300, 20, 600, { isStatic: true, render: wallStyle }), // Right
-            Bodies.rectangle(360, 400, 10, 450, { isStatic: true, render: wallStyle }), // Plunger Lane
-            // Drain Angled Walls
-            Bodies.rectangle(70, 560, 180, 20, { isStatic: true, angle: 0.5, render: wallStyle }),
-            Bodies.rectangle(290, 560, 180, 20, { isStatic: true, angle: -0.5, render: wallStyle })
-        ]);
-
-        function addBumper(x, y, r, color) {
-            const b = Bodies.circle(x, y, r, {
-                isStatic: true,
-                label: 'bumper',
-                restitution: 1.5,
-                render: { fillStyle: '#000', strokeStyle: color, lineWidth: 3 }
-            });
-            b.baseColor = color;
-            Composite.add(world, b);
+class Bumper {
+    constructor(x, y, r) { this.x = x; this.y = y; this.r = r; this.glow = 0; }
+    update(ball) {
+        let d = Math.hypot(ball.x - this.x, ball.y - this.y);
+        if (d < this.r + BALL_RAD) {
+            let angle = Math.atan2(ball.y - this.y, ball.x - this.x);
+            ball.vx = Math.cos(angle) * 16;
+            ball.vy = Math.sin(angle) * 16;
+            this.glow = 15;
+            score += 500;
         }
+        if (this.glow > 0) this.glow--;
+    }
+    draw() {
+        ctx.save();
+        ctx.shadowBlur = this.glow > 0 ? 30 : 5;
+        ctx.shadowColor = COLORS.neon;
+        ctx.strokeStyle = this.glow > 0 ? '#fff' : COLORS.neon;
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+    }
+}
 
-        addBumper(130, 120, 20, '#f0f');
-        addBumper(230, 120, 20, '#f0f');
-        addBumper(180, 200, 20, '#f0f');
-        addBumper(80, 250, 15, '#f0f');
-        addBumper(280, 250, 15, '#f0f');
-        addBumper(180, 350, 30, '#0ff');
+// Environment Elements
+const ball = new Ball();
+const flippers = [new Flipper(155, 740, false), new Flipper(345, 740, true)];
+const bumpers = [new Bumper(250, 320, 45), new Bumper(130, 220, 35), new Bumper(370, 220, 35)];
 
-        // --- Flippers ---
-        function createFlipper(x, y, isLeft) {
-            const group = Body.nextGroup(true);
-            const f = Bodies.rectangle(x, y, 80, 15, {
-                collisionFilter: { group: group },
-                chamfer: { radius: 7 },
-                render: { fillStyle: '#0ff' }
-            });
-            const pivot = Bodies.circle(isLeft ? x - 35 : x + 35, y, 5, { isStatic: true, visible: false });
-            const c = Constraint.create({
-                bodyA: pivot, bodyB: f,
-                pointB: { x: isLeft ? -35 : 35, y: 0 },
-                stiffness: 1, length: 0
-            });
-            Composite.add(world, [f, pivot, c]);
-            return f;
-        }
+function drawPassageway() {
+    ctx.strokeStyle = COLORS.rail;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
 
-        const lFlip = createFlipper(130, 540, true);
-        const rFlip = createFlipper(230, 540, false);
+    // The Curved Entry (Top Center Funnel)
+    ctx.beginPath();
+    ctx.moveTo(180, 0);
+    ctx.quadraticCurveTo(200, 100, 150, 180);
+    ctx.stroke();
 
-        // --- Core Functions ---
-        function spawn() {
-            if (lives <= 0) return;
-            ball = Bodies.circle(380, 550, 10, {
-                restitution: 0.5,
-                friction: 0.001,
-                frictionAir: 0,
-                density: 0.05,
-                label: 'ball',
-                render: { fillStyle: '#fff' }
-            });
-            Composite.add(world, ball);
-        }
+    ctx.beginPath();
+    ctx.moveTo(320, 0);
+    ctx.quadraticCurveTo(300, 100, 350, 180);
+    ctx.stroke();
 
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
+    // Side Slingshots
+    ctx.beginPath(); ctx.moveTo(50, 550); ctx.lineTo(100, 650); ctx.lineTo(50, 650); ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(400, 550); ctx.lineTo(350, 650); ctx.lineTo(400, 650); ctx.closePath();
+    ctx.stroke();
+}
 
-        Events.on(engine, 'beforeUpdate', () => {
-            // FIXED: Using dynamic bindings instead of hardcoded ArrowKeys
-            if (keys[bindings.left]) Body.setAngularVelocity(lFlip, -0.4);
-            else Body.setAngularVelocity(lFlip, 0.2);
+function checkFlipperCollision(b, f) {
+    let dx = b.x - f.x;
+    let dy = b.y - f.y;
+    let cos = Math.cos(-f.angle);
+    let sin = Math.sin(-f.angle);
+    let rx = dx * cos - dy * sin;
+    let ry = dx * sin + dy * cos;
 
-            if (keys[bindings.right]) Body.setAngularVelocity(rFlip, 0.4);
-            else Body.setAngularVelocity(rFlip, -0.2);
+    let lx = f.isRight ? -rx : rx;
+    if (lx > 0 && lx < f.length && Math.abs(ry) < BALL_RAD + f.width/2) {
+        b.vy = -14 - (Math.abs(f.angle - f.baseAngle) * 20);
+        b.vx += (f.isRight ? -3 : 3);
+        b.y = f.y - 30; // Safety offset
+        score += 10;
+    }
+}
 
-            // Flipper constraints
-            if (lFlip.angle < -0.6) Body.setAngle(lFlip, -0.6);
-            if (lFlip.angle > 0.4) Body.setAngle(lFlip, 0.4);
-            if (rFlip.angle > 0.6) Body.setAngle(rFlip, 0.6);
-            if (rFlip.angle < -0.4) Body.setAngle(rFlip, -0.4);
+function nextBall() {
+    balls--;
+    document.getElementById('balls').innerText = balls;
+    if (balls <= 0) {
+        gameState = 'over';
+        document.getElementById('overlay').style.display = 'flex';
+        document.getElementById('finalScore').innerText = "FINAL SCORE: " + score;
+    } else ball.reset();
+}
 
-            // Launcher Logic (continuous force while held)
-            if (keys[bindings.plunge] && ball && ball.position.x > 360) {
-                Body.applyForce(ball, ball.position, { x: 0, y: -0.01 });
-            }
+function resetGame() {
+    score = 0; balls = 3; gameState = 'playing';
+    document.getElementById('score').innerText = 0;
+    document.getElementById('balls').innerText = 3;
+    document.getElementById('overlay').style.display = 'none';
+    ball.reset();
+}
 
-            // Drain logic
-            if (ball && ball.position.y > height) {
-                Composite.remove(world, ball);
-                ball = null;
-                lives--;
-                document.getElementById('l').innerText = `BALLS: ${lives}`;
-                if (lives > 0) setTimeout(spawn, 1000);
-                else alert("Game Over! Score: " + score);
-            }
-        });
+window.addEventListener('keydown', e => { 
+    keys[e.code] = true; 
 
-        // Collision logic for bumpers
-        Events.on(engine, 'collisionStart', (e) => {
-            e.pairs.forEach(p => {
-                const { bodyA, bodyB } = p;
-                const isBumper = bodyA.label === 'bumper' ? bodyA : (bodyB.label === 'bumper' ? bodyB : null);
-                const isBall = bodyA.label === 'ball' ? bodyA : (bodyB.label === 'ball' ? bodyB : null);
+    if (e.code === 'KeyR' && gameState === 'over') resetGame();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
 
-                if (isBumper && isBall) {
-                    score += 100;
-                    document.getElementById('s').innerText = `SCORE: ${String(score).padStart(4, '0')}`;
-                    isBumper.render.fillStyle = isBumper.baseColor;
-                    setTimeout(() => isBumper.render.fillStyle = '#000', 100);
-                }
-            });
-        });
+document.getElementById('zoom').addEventListener('input', (e) => {
+    const scale = e.target.value;
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.transformOrigin = 'top left';
+});
 
-        // --- UI Logic ---
-        const bindLeftEl = document.getElementById('bind-left');
-        const bindRightEl = document.getElementById('bind-right');
-        const bindPlungeEl = document.getElementById('bind-plunge');
+function loop() {
+    ctx.clearRect(0,0, canvas.width, canvas.height);
+    
+    // Draw Rails & Static Deco
+    drawPassageway();
+    
+    // Plunger lane wall
+    ctx.strokeStyle = '#222';
+    ctx.beginPath(); ctx.moveTo(450, 800); ctx.lineTo(450, 150); ctx.stroke();
 
-        function updateBindingsUI() {
-            bindLeftEl.innerText = bindings.left;
-            bindRightEl.innerText = bindings.right;
-            bindPlungeEl.innerText = bindings.plunge;
-        }
+    if (gameState === 'playing') {
+        ball.update();
+        flippers.forEach(f => { f.update(); checkFlipperCollision(ball, f); });
+        bumpers.forEach(b => b.update(ball));
+        document.getElementById('score').innerText = score;
+        document.getElementById('dynamic-info').textContent = `Score: ${score} | ${ball.inLane ? "Ball in plunger lane. Hold Space to launch!" : "Ball in play. Use flippers to score!"}`;
+    }
 
-        function startRebind(action) {
-            const btn = document.getElementById('rebind-' + action);
-            btn.innerText = '...';
-            const onKey = (e) => {
-                bindings[action] = e.code;
-                localStorage.setItem('pinball_bindings', JSON.stringify(bindings));
-                updateBindingsUI();
-                btn.innerText = 'Rebind';
-                window.removeEventListener('keydown', onKey);
-            };
-            window.addEventListener('keydown', onKey);
-        }
+    bumpers.forEach(b => b.draw());
+    flippers.forEach(f => f.draw());
+    ball.draw();
 
-        document.getElementById('rebind-left').onclick = () => startRebind('left');
-        document.getElementById('rebind-right').onclick = () => startRebind('right');
-        document.getElementById('rebind-plunge').onclick = () => startRebind('plunge');
+    if (ball.inLane) {
+        ctx.fillStyle = COLORS.neon;
+        ctx.font = '12px Arial';
+        ctx.fillText("HOLD SPACE TO PLUNGE", 320, 780);
+    }
 
-        // Zoom
-        document.getElementById('zoom-range').oninput = (e) => {
-            const cvs = canvasContainer.querySelector('canvas');
-            if (cvs) cvs.style.transform = `scale(${e.target.value})`;
-        };
+    requestAnimationFrame(loop);
+}
 
-        // Rewind
-        const stateBuffer = [];
-        setInterval(() => {
-            if (ball) stateBuffer.push({x: ball.position.x, y: ball.position.y, vx: ball.velocity.x, vy: ball.velocity.y});
-            if (stateBuffer.length > 200) stateBuffer.shift();
-        }, 100);
-
-        document.getElementById('rewind').onclick = () => {
-            if (ball && stateBuffer.length > 20) {
-                const s = stateBuffer[0];
-                Body.setPosition(ball, {x: s.x, y: s.y});
-                Body.setVelocity(ball, {x: s.vx, y: s.vy});
-                stateBuffer.length = 0;
-            }
-        };
-
-        // Editor modal
-        const modal = document.getElementById('modal');
-        document.getElementById('open-editor').onclick = () => {
-            modal.innerHTML = `<textarea id="ed">// Custom table logic here</textarea><br><button onclick="modal.style.display='none'">Close</button>`;
-            modal.style.display = 'block';
-        };
-
-        updateBindingsUI();
-        spawn();
-    </script>
+loop();
+</script>
 </body>
-</html>  
+</html>
