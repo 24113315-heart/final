@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>  
+    <meta charset="UTF-8">
+    <title>OnlineGDB Pinball - Fixed</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #0ff;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        #canvas-container {
+            position: relative;
+            border: 2px solid #333;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .stat { font-size: 20px; text-shadow: 0 0 5px #0ff; }
+        #controls {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            width: 300px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid #222;
+            padding: 8px;
+            pointer-events: auto;
+            z-index: 20;
+            color: #0ff;
+            font-size: 13px;
+        }
+        #controls h3 { margin: 6px 0; font-size: 14px; border-bottom: 1px solid #333; }
+        .control-row { display:flex; justify-content:space-between; align-items:center; margin:6px 0; }
+        #modal { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #021218; color: #0ff; padding: 12px; border: 1px solid #123; display:none; z-index:100; }
+        #modal textarea { width: 480px; height: 260px; background: #000; color: #0ff; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="stat" id="s">SCORE: 0000</div>
+        <div class="stat" id="l">BALLS: 3</div>
+        <div style="color: #666; font-size: 12px;">Controls in the side panel</div>
+    </div>
+
+    <div id="controls">
+        <h3>Controls</h3>
+        <div id="remap">
+            <div class="control-row"><div>Left Flipper</div><div><span id="bind-left">ArrowLeft</span><button id="rebind-left">Rebind</button></div></div>
+            <div class="control-row"><div>Right Flipper</div><div><span id="bind-right">ArrowRight</span><button id="rebind-right">Rebind</button></div></div>
+            <div class="control-row"><div>Plunge</div><div><span id="bind-plunge">Space</span><button id="rebind-plunge">Rebind</button></div></div>
+        </div>
+
+        <h3>Camera</h3>
+        <div class="control-row"><div>Zoom</div><div><input id="zoom-range" type="range" min="0.5" max="2" step="0.05" value="1"></div></div>
+
+        <h3>Tools</h3>
+        <div class="control-row"><div>Rewind (5s)</div><div><button id="rewind">Rewind</button></div></div>
+        <div class="control-row"><div>Table Editor</div><div><button id="open-editor">Open</button></div></div>
+
+        <div id="hud" style="margin-top:10px; font-size:11px; color:#555;">
+            Matter.js Physics Active
+        </div>
+    </div>
+
+    <div id="modal"><div id="modal-content"></div></div>
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <script>
+        const { Engine, Render, Runner, Bodies, Composite, Body, Constraint, Events } = Matter;
+
+        const engine = Engine.create();
+        const world = engine.world;
+        const width = 400;
+        const height = 600;
+
+        // Increase physics accuracy to prevent ball tunneling
+        engine.positionIterations = 10;
+        engine.velocityIterations = 10;
+
+        const render = Render.create({
+            element: document.getElementById('canvas-container'),
+            engine: engine,
+            options: {
+                width: width,
+                height: height,
+                wireframes: false,
+                background: '#050505'
+            }
+        });
+
+        Render.run(render);
+        Runner.run(Runner.create(), engine);
+
+        // --- Game State ---
+        let score = 0;
+        let lives = 3;
+        let ball = null;
+        const keys = {};
+        const defaultBindings = { left: 'ArrowLeft', right: 'ArrowRight', plunge: 'Space' };
+        let bindings = Object.assign({}, defaultBindings);
+        
+        // Load saved bindings
+        try { 
+            const saved = localStorage.getItem('pinball_bindings'); 
+            if (saved) Object.assign(bindings, JSON.parse(saved)); 
+        } catch(e){}
+
+        // --- Table Creation ---
+        const wallStyle = { fillStyle: '#222' };
+        
+        Composite.add(world, [
+            Bodies.rectangle(200, 0, 400, 20, { isStatic: true, render: wallStyle }), // Top
+            Bodies.rectangle(0, 300, 20, 600, { isStatic: true, render: wallStyle }),   // Left
+            Bodies.rectangle(400, 300, 20, 600, { isStatic: true, render: wallStyle }), // Right
+            Bodies.rectangle(360, 400, 10, 450, { isStatic: true, render: wallStyle }), // Plunger Lane
+            // Drain Angled Walls
+            Bodies.rectangle(70, 560, 180, 20, { isStatic: true, angle: 0.5, render: wallStyle }),
+            Bodies.rectangle(290, 560, 180, 20, { isStatic: true, angle: -0.5, render: wallStyle })
+        ]);
+
+        function addBumper(x, y, r, color) {
+            const b = Bodies.circle(x, y, r, {
+                isStatic: true,
+                label: 'bumper',
+                restitution: 1.5,
+                render: { fillStyle: '#000', strokeStyle: color, lineWidth: 3 }
+            });
+            b.baseColor = color;
+            Composite.add(world, b);
+        }
+
+        addBumper(130, 120, 20, '#f0f');
+        addBumper(230, 120, 20, '#f0f');
+        addBumper(180, 200, 20, '#f0f');
+        addBumper(80, 250, 15, '#f0f');
+        addBumper(280, 250, 15, '#f0f');
+        addBumper(180, 350, 30, '#0ff');
+
+        // --- Flippers ---
+        function createFlipper(x, y, isLeft) {
+            const group = Body.nextGroup(true);
+            const f = Bodies.rectangle(x, y, 80, 15, {
+                collisionFilter: { group: group },
+                chamfer: { radius: 7 },
+                render: { fillStyle: '#0ff' }
+            });
+            const pivot = Bodies.circle(isLeft ? x - 35 : x + 35, y, 5, { isStatic: true, visible: false });
+            const c = Constraint.create({
+                bodyA: pivot, bodyB: f,
+                pointB: { x: isLeft ? -35 : 35, y: 0 },
+                stiffness: 1, length: 0
+            });
+            Composite.add(world, [f, pivot, c]);
+            return f;
+        }
+
+        const lFlip = createFlipper(130, 540, true);
+        const rFlip = createFlipper(230, 540, false);
+
+        // --- Core Functions ---
+        function spawn() {
+            if (lives <= 0) return;
+            ball = Bodies.circle(380, 550, 10, {
+                restitution: 0.5,
+                friction: 0.001,
+                frictionAir: 0,
+                density: 0.05,
+                label: 'ball',
+                render: { fillStyle: '#fff' }
+            });
+            Composite.add(world, ball);
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        Events.on(engine, 'beforeUpdate', () => {
+            // FIXED: Using dynamic bindings instead of hardcoded ArrowKeys
+            if (keys[bindings.left]) Body.setAngularVelocity(lFlip, -0.4);
+            else Body.setAngularVelocity(lFlip, 0.2);
+
+            if (keys[bindings.right]) Body.setAngularVelocity(rFlip, 0.4);
+            else Body.setAngularVelocity(rFlip, -0.2);
+
+            // Flipper constraints
+            if (lFlip.angle < -0.6) Body.setAngle(lFlip, -0.6);
+            if (lFlip.angle > 0.4) Body.setAngle(lFlip, 0.4);
+            if (rFlip.angle > 0.6) Body.setAngle(rFlip, 0.6);
+            if (rFlip.angle < -0.4) Body.setAngle(rFlip, -0.4);
+
+            // Launcher Logic (continuous force while held)
+            if (keys[bindings.plunge] && ball && ball.position.x > 360) {
+                Body.applyForce(ball, ball.position, { x: 0, y: -0.01 });
+            }
+
+            // Drain logic
+            if (ball && ball.position.y > height) {
+                Composite.remove(world, ball);
+                ball = null;
+                lives--;
+                document.getElementById('l').innerText = `BALLS: ${lives}`;
+                if (lives > 0) setTimeout(spawn, 1000);
+                else alert("Game Over! Score: " + score);
+            }
+        });
+
+        // Collision logic for bumpers
+        Events.on(engine, 'collisionStart', (e) => {
+            e.pairs.forEach(p => {
+                const { bodyA, bodyB } = p;
+                const isBumper = bodyA.label === 'bumper' ? bodyA : (bodyB.label === 'bumper' ? bodyB : null);
+                const isBall = bodyA.label === 'ball' ? bodyA : (bodyB.label === 'ball' ? bodyB : null);
+
+                if (isBumper && isBall) {
+                    score += 100;
+                    document.getElementById('s').innerText = `SCORE: ${String(score).padStart(4, '0')}`;
+                    isBumper.render.fillStyle = isBumper.baseColor;
+                    setTimeout(() => isBumper.render.fillStyle = '#000', 100);
+                }
+            });
+        });
+
+        // --- UI Logic ---
+        const bindLeftEl = document.getElementById('bind-left');
+        const bindRightEl = document.getElementById('bind-right');
+        const bindPlungeEl = document.getElementById('bind-plunge');
+
+        function updateBindingsUI() {
+            bindLeftEl.innerText = bindings.left;
+            bindRightEl.innerText = bindings.right;
+            bindPlungeEl.innerText = bindings.plunge;
+        }
+
+        function startRebind(action) {
+            const btn = document.getElementById('rebind-' + action);
+            btn.innerText = '...';
+            const onKey = (e) => {
+                bindings[action] = e.code;
+                localStorage.setItem('pinball_bindings', JSON.stringify(bindings));
+                updateBindingsUI();
+                btn.innerText = 'Rebind';
+                window.removeEventListener('keydown', onKey);
+            };
+            window.addEventListener('keydown', onKey);
+        }
+
+        document.getElementById('rebind-left').onclick = () => startRebind('left');
+        document.getElementById('rebind-right').onclick = () => startRebind('right');
+        document.getElementById('rebind-plunge').onclick = () => startRebind('plunge');
+
+        // Zoom
+        document.getElementById('zoom-range').oninput = (e) => {
+            const cvs = canvasContainer.querySelector('canvas');
+            if (cvs) cvs.style.transform = `scale(${e.target.value})`;
+        };
+
+        // Rewind
+        const stateBuffer = [];
+        setInterval(() => {
+            if (ball) stateBuffer.push({x: ball.position.x, y: ball.position.y, vx: ball.velocity.x, vy: ball.velocity.y});
+            if (stateBuffer.length > 200) stateBuffer.shift();
+        }, 100);
+
+        document.getElementById('rewind').onclick = () => {
+            if (ball && stateBuffer.length > 20) {
+                const s = stateBuffer[0];
+                Body.setPosition(ball, {x: s.x, y: s.y});
+                Body.setVelocity(ball, {x: s.vx, y: s.vy});
+                stateBuffer.length = 0;
+            }
+        };
+
+        // Editor modal
+        const modal = document.getElementById('modal');
+        document.getElementById('open-editor').onclick = () => {
+            modal.innerHTML = `<textarea id="ed">// Custom table logic here</textarea><br><button onclick="modal.style.display='none'">Close</button>`;
+            modal.style.display = 'block';
+        };
+
+        updateBindingsUI();
+        spawn();
+    </script>
+</body>
+</html>  
